@@ -1,0 +1,332 @@
+---
+title: "NYPD Shooting Incident Data Report"
+author: "Robin Lutter"
+date: "30-8-2021"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+
+
+In the following I will analyze the NYPD Shooting Incident Data. Here I listed the questions that I would like to answer and the information I would like to obtain from the analysis:
+\
+
+* How are the number of murders distributed over the different boros?
+* How are the number of murders changing over the years?
+   + Is some sort of trend or pattern recognizable?
+   + If yes, what could be the reasons for that?
+* How are the murders spread over different races?
+   + Is there something noticable?
+   + Can we predict a future trend?
+   
+\
+To answer these question, I will perform the following steps during the data analysis:
+
+1. Include necessary libraries
+2. Import the dataset and give information about the columns
+3. Tidy the dataset
+4. Modify the dataset and plotting
+   * 4.1 Analyze the number of murders for each boro
+   * 4.2 Analyze the number of murders over the years
+   * 4.3 Analyze the number of murders for each victims race
+   * 4.4 Analyze the number of murders for each victims race over the years
+5. Modeling the numbers of black victims
+6. Conclusion and talking about bias
+
+
+
+## 1. Include necessary libraries
+```{r import_libraries, message=FALSE}
+library(tidyverse)
+library(lubridate)
+```
+
+
+
+## 2. Import the dataset and give information about the columns
+```{r import_data, message=FALSE}
+url_in <- "https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD"
+nypd_csv_data = read_csv(url_in)
+
+# show a preview of the data
+head(nypd_csv_data)
+```
+
+
+
+### Column information
+Taken from: https://data.cityofnewyork.us/Public-Safety/NYPD-Shooting-Incident-Data-Historic-/833y-fsy8
+
+Column name | Column Description 
+------------- | -------------
+INCIDENT_KEY | Randomly generated persistent ID for each incident 
+OCCUR_DATE | Exact date of the shooting incident
+OCCUR_TIME | Exact time of the shooting incident
+BORO | Borough where the shooting incident occurred
+PRECINCT | Precinct where the shooting incident occurred
+JURISDICTION_CODE | Jurisdiction where the shooting incident occurred. Jurisdiction codes 0(Patrol), 1(Transit) and 2(Housing) represent NYPD whilst codes 3 and more represent non NYPD jurisdictions
+LOCATION_DESC | Location of the shooting incident
+STATISTICAL_MURDER_FLAG | Shooting resulted in the victim’s death which would be counted as a murder
+PERP_AGE_GROUP | Perpetrator’s age within a category
+PERP_SEX | Perpetrator’s sex description
+PERP_RACE | Perpetrator’s race description
+VIC_AGE_GROUP | Victim’s age within a category
+VIC_SEX | Victim’s sex description
+VIC_RACE | Victim’s race description
+X_COORD_CD | Midblock X-coordinate for New York State Plane Coordinate System, Long Island Zone, NAD 83, units feet (FIPS 3104)
+Y_COORD_CD | Midblock Y-coordinate for New York State Plane Coordinate System, Long Island Zone, NAD 83, units feet (FIPS 3104)
+Latitude | Latitude coordinate for Global Coordinate System, WGS 1984, decimal degrees (EPSG 4326)
+Longitude | Longitude coordinate for Global Coordinate System, WGS 1984, decimal degrees (EPSG 4326)
+Lon_Lat | Longitude and Latitude Coordinates for mapping
+
+\
+
+## 3. Tidy the dataset
+```{r tidy_data}
+# exclude some columns that are not needed for the analysis 
+nypd_tidy_data <- nypd_csv_data |>
+  select(-c(INCIDENT_KEY, X_COORD_CD, Y_COORD_CD, Latitude, Longitude, Lon_Lat))
+
+# change datatypes for date and time columns from character to date and time
+nypd_tidy_data <- nypd_tidy_data |>
+  mutate(OCCUR_DATE = mdy(OCCUR_DATE), OCCUR_TIME = hms(OCCUR_TIME))
+
+# change appropriate columns to factor
+nypd_tidy_data <- nypd_tidy_data |>
+  mutate(PERP_AGE_GROUP = as.factor(PERP_AGE_GROUP)) |>
+  mutate(PERP_SEX = as.factor(PERP_SEX)) |>
+  mutate(PERP_RACE = as.factor(PERP_RACE)) |>
+  mutate(VIC_AGE_GROUP = as.factor(VIC_AGE_GROUP)) |>
+  mutate(VIC_SEX = as.factor(VIC_SEX)) |>
+  mutate(VIC_RACE = as.factor(VIC_RACE)) |>
+  mutate(BORO = as.factor(BORO))
+
+# show a summary of the tidy data
+summary(nypd_tidy_data)
+```
+
+\
+As we can see, there is missing data in some of the columns. For the analysis that I want to perform, this won't be a problem, because
+I will focus on the number of murders with respect to the victims race and the boro where the incident occured. For these cases, all
+the necessary data is available.
+\
+\
+In case we wanted to evaluate data from columns with missing values, we would have to handle them in one of many possible ways.
+Since we don't know much more about the data, 
+the easiest way would be either to ignore those rows for further analysis or replace the missing value with an calculated average value instead (if this makes sense for the specific column).
+\
+
+
+## 4. Modify the dataset and plotting
+### 4.1 Analyze the number of murders for each boro
+```{r analyze_murders_by_boro, message=FALSE}
+
+# get all murders for each boro over all the years 
+nypd_murders_by_boro <- nypd_tidy_data |>
+  group_by(BORO) |>
+  summarize(MURDERS = sum(STATISTICAL_MURDER_FLAG == TRUE)) |>
+  select(BORO, MURDERS) |>
+  ungroup()
+
+head(nypd_murders_by_boro)
+
+# plot murders in each boro
+nypd_murders_by_boro |>
+  ggplot(aes(x = MURDERS, y = BORO)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  labs(title = "Murders in each Boro accumulated from 2006-2020",
+       x = "Number of murders", y = "Boro")
+
+```
+\
+The plot shows, that most of the murders occur in Brooklyn and Bronx, whereas Staten Island has a low murder rate.
+If we wanted to perform a deeper interpretation of this distribution, we would need more data.
+For example, if we knew the number of people living in each boro, we could check if one has a higher or lower crime rate than the others with respect to their total population.
+\
+
+### 4.2 Analyze the number of murders over the years
+```{r analyze_murders_by_year, message=FALSE}
+
+# get all murders for each year
+nypd_murders_by_year <- nypd_tidy_data |>
+  mutate(YEAR = year(nypd_tidy_data$OCCUR_DATE)) |>
+  group_by(YEAR) |>
+  summarize(MURDERS = sum(STATISTICAL_MURDER_FLAG == TRUE)) |>
+  select(YEAR, MURDERS) |>
+  ungroup()
+
+head(nypd_murders_by_year)
+
+# plot murders in each year
+nypd_murders_by_year |>
+  ggplot(aes(x = YEAR, y = MURDERS)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  labs(title = "Murders in each year from 2006-2020 accumulated 
+       over all Boros", x = "Year", y = "Number of murders") +
+  scale_x_continuous(breaks=c(2006:2020), labels=c(2006:2020))
+
+```
+\
+We can see, that the number of murders had a decreasing trend over the years, whereas in 2020 there was a significant increase.
+To understand the reason for this, again we would need more data. One of the influencing factors could be the COVID-19 pandemic.
+Many people lost their jobs, were frustrated and had not much of an engangement. This could have lead to an increasing level of crime.
+But with the existing base of data we can't be entirely sure about that. 
+\
+
+### 4.3 Analyze the number of murders for each victims race
+```{r analyze_murders_by_victims_race, message=FALSE}
+
+# get all murders listed for each victims race
+nypd_murders_by_vic_race <- nypd_tidy_data |>
+  group_by(VIC_RACE) |>
+  summarize(MURDERS = sum(STATISTICAL_MURDER_FLAG ==TRUE)) |>
+  select(VIC_RACE, MURDERS) |>
+  ungroup()
+
+head(nypd_murders_by_vic_race)
+
+# plot murders according to victims race
+nypd_murders_by_vic_race |>
+  ggplot(aes(x = MURDERS, y = VIC_RACE)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  labs(title = "Murders according to vic. race from 2006-2020",
+       x = "Number of murders", y = "Race of victim")
+
+```
+\
+The plot shows that most of the victims were black, whereas no american indian/alaskan native person was murdered in the last 15 years.
+Again we would need more information about the proportion of each race in the whole population of New York to get a better understanding of those numbers and their relationships.
+\
+
+### 4.4 Analyze the number of murders for each victims race over the years
+```{r analyze_murders_by_year_and_victims_race, message=FALSE}
+
+# get murders for each year and victims race
+nypd_murder_by_year_race <- nypd_tidy_data |>
+  group_by(YEAR = year(nypd_tidy_data$OCCUR_DATE), VIC_RACE) |>
+  summarize(MURDERS = sum(STATISTICAL_MURDER_FLAG == TRUE),
+            CASES = sum(STATISTICAL_MURDER_FLAG == TRUE |
+                          STATISTICAL_MURDER_FLAG == FALSE)) |>
+  mutate(DEATH_PERCENTAGE = MURDERS / CASES) |>
+  select(YEAR, VIC_RACE, MURDERS, CASES, DEATH_PERCENTAGE) |>
+  ungroup()
+
+head(nypd_murder_by_year_race)
+
+# plot murders according to victims race over the years
+nypd_murder_by_year_race |>
+  filter(VIC_RACE != "UNKNOWN") |>
+  ggplot(aes(x = YEAR, y = MURDERS, color = VIC_RACE)) +
+  geom_point() +
+  labs(title = "Murders according to victims race from 2006-2020",
+       x = "Year", y = "Murders")
+
+```
+\
+Here we can see the distribution of murders for each race over the last 15 years. As we have seen before, most of the victims were black people.
+At this point we can get another insight. The black victims are the only ones where the number of murders significantly decreased over the years (excluding the year 2020).
+For all other races there was a nearly constant amount of murders each year. This means that the overall decrease in murders that we have seen in the plot of chapter 4.2 is caused mainly by the decrease of murders of black people.
+\
+\
+
+```{r analyze data further, include=FALSE}
+
+# # get all murders for each boro for each year
+# nypd_murders_by_boro_year <- nypd_tidy_data |>
+#   mutate(YEAR = year(nypd_tidy_data$OCCUR_DATE)) |>
+#   group_by(BORO, YEAR) |>
+#   summarize(MURDERS = sum(STATISTICAL_MURDER_FLAG == TRUE)) |>
+#   select(YEAR, BORO, MURDERS) |>
+#   ungroup()
+
+
+# # get proportion of murders to total cases for each year
+# nypd_murderPercentage_by_year <- nypd_tidy_data |>
+#   group_by(YEAR = year(nypd_tidy_data$OCCUR_DATE)) |>
+#   summarize(MURDERS = sum(STATISTICAL_MURDER_FLAG == TRUE),
+#             CASES = sum(STATISTICAL_MURDER_FLAG == TRUE | STATISTICAL_MURDER_FLAG == FALSE)) |>
+#   mutate(DEATH_PERCENTAGE = MURDERS / CASES) |>
+#   select(YEAR, MURDERS, CASES, DEATH_PERCENTAGE) |>
+#   ungroup()
+
+
+# # plot death proportion according to victims race
+# nypd_murder_by_year_race |>
+#   filter(VIC_RACE != "UNKNOWN" & DEATH_PERCENTAGE > 0) |>
+#   ggplot(aes(x = YEAR, y = DEATH_PERCENTAGE, color = VIC_RACE)) +
+#   geom_line() +
+#   labs(title = "Death proportion according to victims race from 2006-2020", x = "Year", y = "Murders")
+
+```
+
+
+## 5. Modeling the numbers of black victims
+```{r model_data, message=FALSE}
+
+# linear model
+model_data <- nypd_murder_by_year_race |>
+  filter(VIC_RACE == "BLACK")
+
+model_murders <- lm(MURDERS ~ YEAR, data = model_data)
+
+# add a prediction column
+model_data <- model_data |> 
+  mutate(MURDERS_PRED = predict(model_murders))
+
+# visualize the prediction of murders
+model_data |> ggplot() +
+  geom_point(aes(x = YEAR, y = MURDERS), color = "blue") +
+  geom_point(aes(x = YEAR, y = MURDERS_PRED), color = "red") +
+  labs(title = "Murders of black victims from 2006-2020 with red prediction line",
+       x = "Year", y = "Murders")
+
+```
+\
+The blue points represent the number murdered black people over the years. The red line shows the linear prediction. As we have already seen, the numbers are decreasing overall with a remarkable exception in 2020 that was discussed in chapter 4.2 and 4.4. Of course, outliers like the one in 2020 should be investigated further to draw more insight from it, but for this project, I will stop the analysis at this point.
+\
+
+```{r model_data_further, include=FALSE}
+
+# # linear model
+# model_data <- nypd_murder_by_year_race |>
+#   filter(VIC_RACE == "BLACK")
+# 
+# model_murders_prop <- lm(DEATH_PERCENTAGE ~ YEAR, data = model_data)
+# summary(model_murders_prop)
+# 
+# # add a prediction column
+# model_data <- model_data |> 
+#   mutate(MURDERS_PROP_PRED = predict(model_murders_prop))
+# 
+# # visualize the prediction of murder proportion
+# model_data |> ggplot() +
+#   geom_point(aes(x = YEAR, y = DEATH_PERCENTAGE), color = "blue") +
+#   geom_point(aes(x = YEAR, y = MURDERS_PROP_PRED), color = "red") +
+#   labs(title = "Proportion of deadly incidents for black victims from 2006-2020 with prediction", x = "Year", y = "Murders")
+
+```
+
+
+## 6. Conclusion and talking about bias
+I hope this report gave you a solid overview over the NYPD Shooting Incident Data. Of course not all aspects of the data set were covered in this report.
+For example the features like age and sex of the perpetrator and victims were not covered at all in this analysis. This information surely would allow a deeper understanding of those incidents and murders.
+\
+\
+As with all data analysis, there is always some sort of bias. On the one hand, the data itself can be biased in such a way, that some incidents are not covered in the data set at all, due to certain (unknown) circumstances. On the other hand, the one who analysis the data can be biased. One example could be a bias in the presentation of the results, which can lead to a kind of controlled focus of the reader of the report. For example, if I would have made some of the plots visually much more noticeable than others, I can make the reader focus on facts that I want the reader to focus on. The avoid such bias, I tried to make all plots as equally appealing as possible.
+\
+Another source of bias can be the choice of the model. Since I already assumed a linearly decreasing number of murders of the years according to my plots, my first choice for a model was also a linear one. At this point, one should dive in deeper and try out other types of models to see, if the initial assumption was appropriate.
+\
+\
+
+## Session Info
+
+```{r session-info, include=TRUE, echo=FALSE, results='markup'}
+devtools::session_info()
+```
